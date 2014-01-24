@@ -1,0 +1,233 @@
+Cristian Poll
+CSC398 A2
+Longest Common Subsequence Parallelization.
+
+
+Introduction:
+-------------
+The goal of this exercise is to take the working LCS length-finder code created
+for A1, and adapt it to work using parallelization.
+
+The initial implementation will be lcs.c.
+Algorithm will involve splitting into n threads, with each thread taking 1/n of
+the matrix to solve (split into n columns). Threads will communicate by putting
+the necessary values (namely, the values on the right edge of their assigned 
+column) into shared memory. Each thread is dependant on the values of the right
+edge of the column to their left (save for the leftmost, of course), and will
+simply spin-lock waiting for it. 
+
+The hope is that threads will only spinlock at the beginning, when the thread
+before them is also spinlocking or processing newly-acquired data, and once
+all threads begin working, they will finish their work around the same time as
+the previous thread does (and passes them the required data to perform more
+work).
+
+One thing to observe is when the processes spin-lock: They can be expected to
+spin-lock at the beginning, as they are waiting for the threads before them to
+start and supply them data. What may be more interesting to see, however, is
+whether they continue to spin-lock after the beginning; once computation
+begins, will the threads work at around the same speed and thus provide a
+constant stream of data for the next thread to do work, or will problems arise
+due to scheduling or other factors, causing threads to wait for other threads
+to finish before they can work?
+
+Furthermore, we will try to explore ways to limit this problem, if it exists,
+such as giving different threads different priorities on the processor
+(if possible) to ensure that less essential threads (taking the rightmost
+columns, less threads depend on them) are pre-empted from the processor first.
+Changing priorities might also improve efficiency: If a thread has fallen
+behind, increasing its priority may allow it to catch up and finish around the
+same time as the other threads.
+
+
+Testing:
+--------
+
+Format is:
+	[time] ms, [thread1 spinlock count] / ... / [thread2 spinlock count]
+
+
+Tests using Revision 30 Code on CS01:
+   dnatest5/dnatest6, blocksize 2500/2500, 4-thread:
+	- 14170 ms 0 / 186647 / 525465 / 684612
+	- 5520 ms 0 / 185457 / 17665 / 816770
+	- 5594 ms 0 / 1 / 651816 / 386743
+	- 5553 ms 0 / 106683 / 605004 / 359406
+
+   dnatest5/dnatest6, blocksize 2500/2500, 2-thread:
+	- 5506 ms 0 / 745473
+	- 5499 ms 0 / 745473
+	- 5473 ms 0 / 745473
+	- 5471 ms 0 / 745473
+
+   dnatest5/dnatest6, blocksize 2000/25, 2-thread:
+	- 4790 ms 0 / 671745
+	- 4703 ms 0 / 794625
+	- 4794 ms 0 / 638977
+	- 4716 ms 0 / 606209
+
+   dnatest5/dnatest6, blocksize 25/2000, 2-thread:
+	- 5200 ms 0 / 741377
+	- 5178 ms 0 / 704513
+	- 5099 ms 0 / 609887
+	- 5282 ms 0 / 706561
+
+   dnatest3/dnatest4, blocksize 2000/25, 2-thread:
+	- 1295 ms 0 / 522241
+	- 1333 ms 0 / 563201
+	- 1245 ms 0 / 518145
+	- 1388 ms 0 / 524289
+
+Tests using Revision 30 Code on cslinux:
+   dnatest5/dnatest6, blocksize 2000/25, 2-thread:
+	- 5593 ms 0 / 32769
+	- 5532 ms 0 / 24577
+	- 5540 ms 0 / 24577
+	- 5596 ms 0 / 34817
+
+   dnatest5/dnatest6, blocksize 2000/25, 4-thread:
+	- 3151 ms 0 / 2 / 16417 / 57344
+	- 3395 ms 0 / 1 / 23491 / 42045
+	- 3094 ms 0 / 6243 / 13642 / 25173
+	- 3272 ms 0 / 1 / 13345 / 54239
+
+   dnatest5/dnatest6, blocksize 2000/25, 6-thread:
+	- 2341 ms 0 / 343 / 9262 / 8159 / 13008 / 20429
+	- 2308 ms 0 / 1 / 3153 / 6065 / 8191 / 31713
+	- 2378 ms 0 / 1 / 1898 / 3373 / 32441 / 17584
+	- 2289 ms 0 / 1341 / 2547 / 23319 / 9192 / 19952
+
+   dnatest3/dnatest4, blocksize 2000/25, 4-thread:
+	- 1134 ms 0 / 11781 / 3986 / 26747
+	- 1059 ms 0 / 1 / 16634 / 16134
+	- 975 ms 0 / 1 / 13883 / 10693
+	- 976 ms 0 / 2743 / 7900 / 13934  
+
+   dnatest3/dnatest4, blocksize 2000/25, 6-thread:
+	- 806 ms 0 / 3806 / 4955 / 3576 / 5889 / 12495
+	- 771 ms 0 / 12110 / 4096 / 1 / 4075 / 10260
+	- 807 ms 0 / 1 / 1098 / 13754 / 2241 / 13627
+	- 806 ms 0 / 5345 / 2206 / 2672 / 7657 / 12841
+
+Tests on cs21, dna100k1/dna100k2, blocksize 25/2000, 2-thread:
+   With sleep(0.1) between thread creations:
+	- 32434 ms 0 / 1898497
+	- 32260 ms 0 / 1560256
+	- 32515 ms 0 / 1845249
+
+   With sleep(1) between thread creations:
+	- 32361 ms 0 / 771091  
+	- 32138 ms 0 / 681985
+	- 32202 ms 0 / 813057
+
+   Without sleeping:
+	- 32235 ms 0 / 1738753
+	- 32368 ms 0 / 1929217
+	- 32323 ms 0 / 1714177
+	
+Analysis:
+---------
+
+Waiting for input is done by spinlocking, number of spinlocks are recorded.
+These spinlocks represent useless work; if we had used a semaphore instead,
+spins would translate to time spent waiting and not working. If the number of
+threads are equal to the number of cores servicing them, the two should have
+the same results. Spin-locking is used for ease of observation.
+
+These values would be difficult to translate into time spent spinlocking,
+and are instead best used in comparison with each other. The goal is to find
+an arrangment where spinlocks are minimized (i.e. each thread is a bit behind
+the thread before it in computation, so it always has the required data when
+it needs it, and does not spinlock wait).
+
+
+It appears that cs01 is a 2-core machine, or at least the code can only use
+2 cores, as the results of our 4-thread and 2-thread tests are very similar.
+This would also explain the discrepancy in spinlock values, as different thread
+schedules would greatly influence the results, as all threads cannot be working
+at the same time.
+
+Also, it appears that 6-cores at most can be used on cslinux, adding threads
+after that point (results not recorded) did not decrease runtime.
+
+Of interest are the number of spinlocks on the 2-thread test, namely that they
+never change. This would imply that thread 0 and 1 always keep the same pace in
+relation to each other, and perhaps never lose the processor (or are pre-empted
+and rescheduled together at the same time). This is not the case for other block
+sizes, however, as seen by the 2000/25 and
+
+We can observe a bit under a 50% reduction in time taken to find LCS with our
+two-core solution compared to the 1-core solution:
+
+	- dnatest5/6, 2000/25, for example, takes ~8400ms with the single-core
+	  solution and ~4700ms with the dual- core one.
+		* 45% decrease, or 50% decrease + 500ms
+
+	- Similarly, dnatest3/4 takes ~2100ms at 2000/25 1-core and ~1300 ms
+	  with dual-threads.
+		* 44% decrease, or 50% decrease + 250ms
+
+Some further comparisons on cslinux tests:
+
+	- dnatest5/6 2000/25: 1-thread, ~8400ms vs. 4-thread, ~3100ms
+		* 64% decrease, or 75% (3/4) decrease + 1000ms 
+	
+	- dnatest5/6 2000/25: 1-thread ~8400ms vs. 6-thread, ~ 2300ms
+		* 73% decrease, or 84% (5/6) decrease + 900ms
+
+	- dnatest3/4 2000/25: 1-thread ~2100ms vs. 6-thread, ~800ms
+		* 62% decrease, or 84% (5/6) + 450ms
+
+
+
+We find that using more threads further reduces time taken, but not at exactly
+(Time under single-thread)/(Number of threads). This is presumably due mostly
+to the fact that each thread is not always doing meaningful work, but spends a
+while waiting for the thread before it. Furthermore, the computation is not
+finished until every thread finishes, which means that we end up waiting on the
+last thread, working on the rightmost portion of the matrix: It is clear that
+adding threads causes the last thread to wait longer to begin work, and thus
+adding threads adds overhead, which keeps time taken from being exactly
+(Time under single-thread)/(Number of threads).
+
+Furthermore, some unexpected discrepancies in spinlock-count suggest that the
+threads do not have free reign of the processor, and are pre-empted from time
+to time. If a thread was simply spin-locking, this has little effect, but if it
+was doing meaningful work, its pre-emption affects itself and every thread
+after it that depends on its work for their own computations.
+
+This would likely not be a problem on a dedicated machine, but on cslinux
+performance may be gained by "playing nice" and using a semaphore rather than
+spin-locking waiting for the previous thread.
+
+Finally, we find that 25/2000 (large column size, small row size) does not
+decrease spin-blocking by a significant amount over 2000/25 (large row size, 
+small column size) or 2500/2500 (both), which implies that either the 2nd
+thread manages to keep caught up to the 1st thread and have to wait for data
+from it often, or that spinblocking occurs only at the beginning before thread
+1 has finished computation on a few columns, so that thread 2 may begin.
+
+Examining the test on strings of size 100k with various sleep times between
+thread creations imply that thread 2 does catch up to thread 1, as with a
+full-second head-start, [sleep(1) vs sleep(0.1) ~= sleep(0)], the number of
+spinlocks are far less than what one would expect if thread 1 out-paced thread
+2 by an insignificant amount (less than a full block-sized column) but far 
+less than what one would expect (0) if thread 1 outpaced thread 2 by a
+significant amount and maintained its lead. This may suggest that thread 2 does
+indeed "catch up" to thread 1.
+
+The fact that changing the size of the matrix has little effect on spinblock
+supports the theory that thread 2 waits for thread 1 for the entire duration
+of the program rather than just at the beginning (when thread 1 is working on
+the initial blocks up to the shared edge of the matrix).
+
+The reason for this is unclear, but it may have something to do with when data
+is swapped from memory to cache: Thread 1 needs to wait for the shared array to
+come from memory into cache before writing to it, which slows it down. Thread
+2 has its own array to write to, but since it is not shared with anyone (and
+is unused except on the last iteration), gcc may have optimized thread 2 to
+avoid writing to it altogether.
+
+The 4-thread experiments also support such an idea, that the last thread has
+the most spinlocking, (many times more than the previous threads), perhaps
+because it finishes its task sooner.

@@ -1,0 +1,258 @@
+Cristian Poll
+CSC398 A1
+Longest Common Subsequence Algorithms
+
+
+Introduction:
+-------------
+The goal of this exercise is to develop a C program that, when given two
+(possibly large) strings, outputs the longest common subsequence present in
+both strings.
+
+The program will be designed to compare two strings character by character
+(bioinformatics applications) rather than compare two files line-by-line
+(diff applications), thus algorithm optimizations such as reducing lines to
+hashes will not be performed.
+
+Research:
+---------
+Bergroth et. al.'s survey [1] mentions that space is often the limiting factor
+in LCS algorithms. On inputs of size m and n, the space required is O(m*n),
+due to the usage of a matrix for most algorithms. Bergroth et. al. state that
+the lower bound of the LCS problem is Omega(n^2), but mention some more
+efficient algorithms. 
+
+
+Benchmarks for DNATest:
+-----------------------
+
+-dnatest1 and dnatest2 are two files, each 5000 characters long, consisting of
+ the characters 'A', 'C', 'G' and 'T'. These are meant to model a (small)
+ subsequence of DNA, and will be used for benchmark testing. Based on initial
+ testing, the size of the LCS of dnatest1 and dnatest2 is 3264.
+
+-dnatest3 and dnatest4 are similar to dnatest1 and dnatest2, but their size is
+ 20000 characters each, and based on testing, their LCS is 13075. This is
+ currently being used as the benchmark.
+
+-dnatest5 and dnatest6 are once again similar, but their size is 40000
+ characters each. 
+
+---
+
+* Jan 30, 2011; 15:10 (Revision 9 code) Benchmarks, run on cs01:
+   dnatest1/dnatest2:
+	- 419.60 ms
+	- 419.91 ms
+	- 419.88 ms
+	- 419.31 ms
+	- 419.31 ms
+
+   dnatest3/dnatest4:
+	- 6546.75 ms
+	- 6452.44 ms
+	- 6451.98 ms
+	- 6481.48 ms
+	- 6500.14 ms
+
+   dnatest5/dnatest6:
+	- segfault
+
+* Jan 30, 2011; 17:30 (Revision 9 code) Benchmarks with various gcc flags,
+	run on cs02:
+
+   dnatest3/dnatest4, gcc -O1 flag:
+	- 4380.39 ms
+	- 4372.37 ms
+	- 4362.05 ms
+	- 4367.23 ms
+	- 4367.07 ms
+
+   dnatest3/dnatest4, gcc -O2 flag:
+	- 3819.39 ms
+	- 3811.65 ms
+	- 3815.36 ms
+	- 3833.45 ms
+	- 3814.74 ms
+
+   dnatest3/dnatest4, gcc -O3 flag:
+	- 3814.82 ms
+	- 3813.30 ms
+	- 3810.16 ms
+	- 3809.16 ms
+	- 3816.27 ms
+
+* Jan 30, 2011; 18:20 (Revision 9 code) Benchmarks with -O2 flag,
+	run on cslinux:
+
+   dnatest3/dnatest4, gcc -O2 flag:
+	- 3745.51 ms
+	- 3754.67 ms
+	- 3755.93 ms
+	- 3753.44 ms
+	- 3744.39 ms
+
+   dnatest5/dnatest6, gcc -O2 flag:
+	- 16151.76 ms
+	- 15312.65 ms
+	- 15479.15 ms
+	- 15396.02 ms
+	- 15394.20 ms
+
+* Feb 04, 2011; 3:23 (Revision 18 code) Benchmarks with -O2 flag,
+	run on cs01:
+
+   dnatest3/dnatest4, various block_x/block_y
+   20000, 20000:
+	- 3568.50 ms
+	- 3544.32 ms
+
+   10000, 10000:
+	- 2718.79 ms
+	- 2701.77 ms
+
+   5000, 5000:
+	- 2516.61 ms
+	- 2513.27 ms
+
+   2500, 2500:	
+	- 2435.51 ms
+	- 2432.41 ms
+
+   1000, 1000:
+	- 2416.16 ms
+	- 2435.59 ms
+
+   100, 100:
+	- 2597.22 ms
+	- 2493.19 ms
+	
+   50, 50:
+	- 2758.09 ms
+	- 2665.94 ms
+
+   25, 25:
+	- 3354.76 ms
+	- 3352.22 ms
+
+   dnatest5/dnatest6, various block_x/block_y 
+   40000, 40000:
+	- segfault
+
+   20000, 20000:
+	- 10988.89 ms
+	- 11002.94 ms
+
+   5000, 5000:
+	- 10135.16 ms
+	- 10305.69 ms
+
+   2500, 2500:
+	- 9781.10 ms
+	- 9691.44 ms
+
+   1000, 1000:
+	- 9756.86 ms
+	- 9801.41 ms
+
+   dna100k1/dna100k2, various block_x/block_y
+   100000, 100000:
+	- segfault
+
+   5000, 5000:
+	- 61325.87 ms
+	- 61670.24 ms
+
+   2500, 2500:
+	- 61396.30 ms 
+	- 61243.80 ms
+
+   dna1m1/dna1m1, block_x/block_y size 2500, 2500:
+	- 5982049.06 ms, LCS = 654498
+
+Log:
+----
+Jan. 26, 2011: My initial attempt at implementation will be a naive
+implementation of the matrix method of solving LCS. This will be used to
+provide some initial benchmarks and expose the weaknesses of the method. I had
+initially foreseen a problem with segmentation faults, but the problem did not
+surface with the method I used for matrix creation: loop to create an array of
+arrays, using malloc. Through experimentation, I found that the largest size I
+could allocate for an integer array is 1600000. I imagine that this can be
+worked around by using multiple arrays to represent one, if necessary. Matrix
+optimizations such as breaking it into cache-sized blocks would also avoid this
+limitation. 
+
+---
+
+Jan. 29, 2011: Implementation continues. So far, semi-working code exists to
+parse two files and compare the strings in the files in order to populate the
+matrix, as well as code to print the matrix in readable form, for manual
+testing. Currently there is a problem where the code does not work on strings
+of varying length. 
+
+Some thoughts about optimization: If the two strings begin or end with the same
+series of characters, that series can be omitted from the start, as it will
+always be part of the longest common subsequence. This will cut down on the
+size of the matrix. This is reducing the problem set, which I initially said
+I would not do. However, this might be worth it even if the problem set is only
+reduced by 1: Checking two n-lenght arrays to reduce the problem set takes very
+little time, but the savings are 2n (n operations on the row and n operations
+on the column).  
+
+On memory optimization: The program needs the current row of the matrix (or at
+least the block it is working on), as well as the previous row of the matrix.
+Since the previous row is already fully calculated and often consists of large
+substrings of the same number, it might make sense to compress the string in
+order to take up less room in memory. I.e. 11111122222 -> 1625 (naive
+compression). Using this effectively would be problematic, however, as it would
+require dynamic "blocking", and in the worst case compression is impossible.
+
+---
+
+Jan. 30, 2011: Implementation complete.
+Some thoughts about optimization: The backtracking algorithm that goes over the
+completed matrix should be looked over and perhaps be rewritten to work iter-
+atively, as it seems like there is room for optimization there. However, it
+should only take around time n to run, so it is not a priority.
+
+Some informal testing was done on reducing the problem set: The act of reducing
+the problem set can be likened to simply using smaller strings. For example, if
+the subset is reduced by 8, it is similar to running the program on two strings
+of length n-8 instead of length n, which is not a significant improvement. Thus
+I have decided to place a low priority on this sort of optimization, and focus
+on optimizing loops that run n^2 times.
+
+gcc optimizations flags -O1, -O2 and -O3 were tried out, the speed increase was
+noticable, as recorded above. It appears that there is as significant diff-
+erence in performance between no optimization and -O1, and between -O1 and -O2,
+but no significant (if any) difference between -O2 and -O3. It may be worth
+investigating which specific optimization flags yield such increases in the
+future.
+
+On investigating dnatest5/dnatest6's segfaulting, I discovered that it does not
+segfault when run on cslinux. This would suggest that the arrays simply become
+too big for cs01 to handle, and that breaking the array into smaller pieces may
+be the correct response. dnatest4/dnatest5 performs comparably between cs02 and
+cslinux.
+
+---
+
+Jan. 30, 2011: Today's goal is to fix the implementation to work for large
+numbers. At least, the program should be able to output the length of the LCS.
+This will be accomplished by converting the matrix creation code into a
+function designed to calculate submatrices, and then write code that reaches
+the bottom right of the matrix in submatrix increments.
+
+A note on modes: (Lazy argument parsing)
+Mode 1 prints out all subarrays after they are calculated.
+Mode 2 treats the entire problem as one large subarray.
+Mode 3 combines mode 1 and 2.
+
+Tested several block sizes, it appears that the sweet-spot is around 2500, 2500.
+
+References:
+------------
+
+1. Bergroth, L., H. Hakonen, and T. Raita. "A survey of longest common subsequence algorithms," String Processing and Information Retrieval, 2000. SPIRE 2000. Proceedings. Seventh International Symposium on. 6 August 2002.
+<http://ieeexplore.ieee.org/xpls/abs_all.jsp?arnumber=878178>

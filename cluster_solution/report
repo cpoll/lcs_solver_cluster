@@ -1,0 +1,242 @@
+Cristian Poll
+CSC398 A4
+Longest Common Subsequence Parallelization using Sockets.
+
+Introduction:
+-------------
+
+The goal of this project is to take the working parallelized LCS length-finder
+code created for A2, and adapt it to be run on multiple computers connected
+over a network and communicating through sockets.
+
+See A3's writeup for motivation.
+
+Our implementation uses lcs.c for the client and server.c for the server.
+We use shell scripts start_lcs.sh, lcs.sh and cleanup_lcs.sh to help us
+create and manage processes over multiple cslab computers. See usage_notes for
+more info.
+
+Our modification of A2's code is somewhat rudimentary, with much room for
+optimization. Nevertheless, we hope that it will give a good example of
+performance resulting from this sort of parallelization.
+
+Testing:
+--------
+
+The test procedure is as follows:
+	- Run server.o on cs02
+	- Run start_lcs.sh on cs40
+	- Verify LCS value correctness and record server.o's runtime.
+
+	Note that start_lcs.sh is given num_clients and creates clients
+	starting on cs03 until num_clients is reached. cs machines that
+	cannot be connected to are skipped. We could not attempt 40 machines
+	due to some machines being offline/unresponsive.
+
+Tests using Revision 51 code, Starting on Apr.3, 2011, 4:30PM:
+
+   dnatest3/dnatest4, blocksize 2500/50, 2-client:
+	- 1350.00 ms
+	- 1346.87 ms
+	- 1348.33 ms
+
+   dnatest3/dnatest4, blocksize 2500/50, 4-client:
+	- 999.02 ms
+	- 1002.69 ms
+	- 1001.79 ms
+
+   dnatest3/dnatest4, blocksize 2500/50, 8-client:
+	- 809.23 ms
+	- 809.59 ms
+	- 812.69 ms
+
+   dnatest3/dnatest4, blocksize 800/50, 25-client:
+	- 204.10 ms
+	- 203.06 ms
+	- 207.33 ms
+
+
+   dnatest5/dnatest6, blocksize 2000/50, 2-client:
+	- 4573.92 ms
+	- 4573.67 ms
+	- 4573.51 ms
+ 
+   dnatest5/dnatest6, blocksize 1000/50, 4-client:
+	- 2503.07 ms
+	- 2502.56 ms
+	- 2509.82 ms
+
+   dnatest5/dnatest6, blocksize 2500/50, 4-client:
+	- 2752.43 ms
+	- 4745.39 ms
+	- 2742.11 ms
+
+   dnatest5/dnatest6, blocksize 5000/50, 4-client:
+	- 3160.04 ms
+	- 3161.68 ms
+	- 3159.71 ms
+
+
+
+   dna100k1/dna100k2, blocksize 2500/50, 2-client:
+	- 27842.93 ms
+	- 27837.32 ms
+	- 27843.08 ms
+
+   dna100k1/dna100k2, blocksize 2500/50, 4-client:
+	- 15516.84 ms
+	- 15516.47 ms 
+	- 15517.41 ms
+
+
+   dna100k1/dna100k2, blocksize 2500/50, 8-client:
+	- 8786.77 ms
+	- 8785.06 ms
+	- 8783.89 ms
+
+   dna100k1/dna100k2, blocksize 2000/50, 25-client:
+	- 3946.67 ms
+	- 3941.08 ms
+	- 3943.68 ms
+
+   dna1m1/dna1m2, blocksize 2500/50, 25-client:
+	- 261603.13 ms
+	- 260728.07 ms
+	- 261157.48 ms 
+	
+	Retest: April 4, 12pm
+	- 260823.83 ms 
+	- 260887.67 ms 
+	- 261975.43 ms 
+	
+   dna1m1/dna1m2, blocksize 5000/50, 25-client:
+	April 4, 12pm
+	- 275103.06 ms
+	- 274980.60 ms
+	- 274828.39 ms	
+
+   dna1m1/dna1m2, blocksize 2500/50, 25-client:
+	April 4, 12pm
+	2-thread A2 code running on cs07 and cs08 to examine how a bottleneck
+	(other program using the computer) may affect performance.
+
+	- 276667.47 ms
+	- 275895.39 ms
+	- 271513.65 ms	
+
+   dna1m1/dna1m2, blocksize 2500/50, 38-client: 
+	April 4, 12pm
+	This test is simply for proof-of-concept.
+	We omit cs01 because it is being used for a different project.
+	We use cs02 as the server.
+	The remaining machines, cs03-cs40, are being used for computation.
+	- 178113.92 ms 
+	- 177978.55 ms
+	- 178116.89 ms 
+
+
+Analysis:
+---------
+
+We found the numbers to be rather remarkable, in that they are not only 
+comparable to the results we found in A2, when communication between
+threads should have been much faster, but that they even beat our A2
+results.
+
+For example, dnatest5/6 ran in 5000ms on 2-threads and in 3000ms on 4-threads
+on cslinux. With our new implementation, we found speeds of 4573ms on 2-clients
+and 2500ms on 4-clients.
+
+We hypothesize that this may be partially due to the dual-core nature of each
+machine. Because the machines have two cores, but the program only utilizes one
+of them, the program may be able to have exclusive use of the core. This lack
+of competition may have helped to make up for the extra time taken to
+communicate with other threads over sockets rather than using shared memory.
+
+The fact that the memory was not shared may also have some effect, as this may
+have allowed each program to use the cache more effectively, as it did not need
+to share it with other threads doing the same task. 
+
+Finally, we imagine that the time spent communicating over sockets is comparable
+to the time spent spinblocking waiting for work in the A2 implementation. For
+these sorts of parallelization (dynamic programming), communication costs may 
+only be a small factor in overall runtime.
+
+---
+
+Comparisons to the A2 implementation aside, we will also examine how our
+implementation scales as clients are added.
+
+On small inputs such as the 20k-size strings, we found poor scaling: Doubling
+our clients from 2 to 4 took us from 1350ms to 1000ms, and doubling again took
+us to 800ms. This is only a 25% and 20% decrease in time taken, respectively.
+
+On larger inputs, such as the 100k-size strings, the results were much more
+promising. Here we see that doubling from 2 to 4 and then to 8 brought us 
+times of 28000ms, 15500ms and 8800ms, respectively. This shows a 45% and 44%
+decrease in time taken, respectively.
+
+These numbers suggest that we scale very well given large input size, with the
+100k-size tests almost scaling one-to-one with number of clients: As we double
+the number of clients, we nearly halved the time taken to attain our result.
+
+Indeed, our 1million-size input tests scale nearly one-to-one. The
+results of the 25-client tests take 68% longer than the 38-client tests,
+and 25 clients should theoretically have 65% less computational power than
+38 clients.
+
+The tests using strings of size 1million best illustrates the potential of
+this implementation. Earlier, when using a 1-core or 2-core implementation,
+we found this test to take a large amount of time (around 1.5hrs). However,
+we see that 25-clients working together brings down the time taken siginif-
+icantly, with a runtime of 260000ms (only 4.3 minutes). Even if the scaling
+would be worse than that displayed in our tests, we clearly have the ability
+to get the same results in a fraction of the time.
+
+---
+
+It is worth noting that the lab computers proved reliable during the tests. The
+test results were very close over multiple tests, and at no point did the
+program fail to return the proper result.
+
+Again, we hypothesize that this is due to the dual-core nature of the machines,
+where we may have had uninterrupted use of one of the cores.
+
+We also note that the test results were very consistent. Runtime usually
+differed little between tests, even when the tests were performed on different
+days. 
+
+---
+
+Due to time constraints, we did not perform tests at different times of the day
+and week, which would ascertain how performance changed due to computer lab
+usage. We would have liked to do this, as well as to attempt massive (~24hr)
+workloads.
+
+The effect on other lab users appears to be negligible. Some lab users reported
+spotting lcs.c processes running on the lab computers, but did not report
+noticing any performance decrease in the applications they were running. 
+
+The effect of running a "bottleneck", our A2 computation, on two of the
+computers early in the chain (cs07 and cs08) were noticable, but not great.
+Without this bottleneck, our time was 260000ms, and with we had 275000ms, an
+increase in time taken of only 5%. We did not replicate these results with
+the A2 computation being run by different users, which may have affected
+the results.
+
+We propose that changing the program's priority can solve any bottlenecking
+problems; on the other side of the problem, this measure can also be used to
+keep our program from affecting the performance of other users' applications.
+Regardless, this does not seem to be a problem, based on our tests and on
+anecdotal evidence from other lab users.
+
+---
+
+Our greatest regret is that we could not compare the results of our program to
+other programs that allow parallel processing over multiple computers, such as
+BOINC, using the same hardware (lab computers).
+
+Despite this, we can conclude that our program exceeds expectations, being able
+to effectively scale with clients and calculate parallelized linear programming
+problems at a satisfactory speed (in comparison to single-computer multi-
+threaded applications).

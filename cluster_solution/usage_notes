@@ -1,0 +1,33 @@
+Scripts are found in /scripts. They reference coded with absolute paths and are currently broken for this reason, but modification should be trivial.
+
+server.o
+--------
+Usage:
+	server.o [num_clients]
+
+
+
+start_lcs.sh
+------------
+Usage:
+	start_lcs.sh num_clients test1 test2 server_ip block_x block_y
+
+ex:
+	start_lcs.sh 4 dnatest3 dnatest4 142.150.2.64 2500 50
+
+Notes: Starts on cs03, up to cs40.
+
+cleanup_lcs.sh
+--------------
+Usage:
+	cleanup_lcs.sh num_clients
+
+lcs.sh
+------
+Usage:
+	lcs.sh test1 test2 server_ip block_x block_y
+
+ex:
+	lcs.sh dnatest3 dnatest4 142.150.2.64 2500 50
+
+Used by start_lcs.sh

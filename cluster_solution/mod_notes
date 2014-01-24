@@ -1,0 +1,30 @@
+Line 155: Thread creation
+	Remove and replace with socket connection, pass the connection into
+	thread_main.
+
+Line 190: int thread_num needs to be obtained from the server.
+
+Line 229: Left and Diag are being passed to us, so don't create it.
+
+Line 315: Left_edge is the array we read from. Instead of spinlocking
+	(spinlocks++), just listen to our partner (thread_num-1).
+
+	Blocking recieve required.
+
+	Be careful, as we do this block-by-block... Is this a problem?
+	I think we use left, but only check left_edge here.
+
+Line 359: Writing to left_edge. Instead send it over to partner (thread_num+1).
+	Try blocking first, then non-blocking.
+
+Line 134: Left_edge is instantiated here, and thread_num==0 is taken care of.
+	We can get rid of this, instead doing an if(thread_num==0) when we
+	listen, and replacing the listen with this code (to edge rather
+	than left_edge).
+
+Left_edge: The second variable is still relevant (j), but (i) can be removed,
+	as we no longer write to the next thread's part of left_edge.
+
+Thread_num/NUM_THREADS: 
+	The latter is a global, change it. Make sure it's equal to the number
+	of working threads. 

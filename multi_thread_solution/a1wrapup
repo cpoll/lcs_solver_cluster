@@ -1,0 +1,230 @@
+LCS Single-threaded code optimization:
+Wrap-up from Assignment 1
+
+Before modifying LCS to work using threads and parallelism, I will spend some
+time further optimizing it and discovering the ideal block size for completing
+the matrix.
+
+The code was optimized by minimizing the use of malloc/free, removing unneeded
+calls. This was accomplished by pulling a malloc/free call that always creates
+a matrix of the same size out of a function. Instead, the array is malloced
+only once, and passed to the function for reuse. This should serve to decrease
+overhead and make smaller block sizes viable.
+
+
+
+Further Testing:
+----------------
+
+The goals for testing are to verify if performance is significantly
+affected by the above change, and for what matrix size.
+
+Furthermore, more varied block sizes will be tested, such as rectangular
+blocks.
+
+Numbers to beat from A1 testing (a summary):
+--------------------------------------------
+
+All results are from A1's lcs.c, compiled with -O2 flag, run on cs01 or cs40.
+
+   dnatest3/4 (size 20000)
+   20000 blocksize:
+	~3550 ms
+
+   2500 blocksize:
+	~2430 ms
+
+   100 blocksize:
+	~2500 ms
+
+   50 blocksize:
+	~2700 ms
+
+   25 blocksize:
+	~3300 ms
+
+
+   dnatest5/6 (size 40000):
+   20000 blocksize:
+	~10000 ms
+
+   2500 blocksize:
+	~9700 ms
+
+
+Results using newly optimized code:
+-----------------------------------
+
+The following are test results using single_lcs.c, compiled with -O2 flag, on cs40.
+
+   dnatest3/4 (size 20000)
+   20000 blocksize:
+	- 3487 ms
+	- 3481 ms
+	- 3484 ms
+
+   2500 blocksize:
+	- 2415 ms
+	- 2414 ms
+	- 2414 ms
+
+   100 blocksize:
+	- 2220 ms
+	- 2227 ms
+	- 2225 ms
+
+   50 blocksize:
+	- 2222 ms
+	- 2231 ms
+	- 2231 ms
+
+   25 blocksize:
+	- 2424 ms
+	- 2409 ms
+	- 2408 ms
+
+   10 blocksize:
+	- 3262 ms
+	- 3344 ms
+	- 3243 ms
+
+   dnatest5/6 (size 40000):
+   20000 blocksize:
+	- 10761 ms
+	- 10744 ms
+	- 10744 ms
+
+   2500 blocksize:
+	- 9596 ms
+	- 9596 ms
+	- 9595 ms
+
+   250 blocksize:
+	- 9054 ms
+	- 9054 ms
+	- 9049 ms
+
+   100 blocksize:
+	- 8870 ms
+	- 8913 ms
+	- 8877 ms
+
+   50 blocksize:
+	- 8943 ms
+	- 8883 ms
+	- 8939 ms
+
+Observations: It appears that the optimization had some effect. With larger
+block sizes such as 20000 and 2500, there is little difference in runtime;
+this is to be expected, as with large block sizes, fewer blocks are required to
+find the LCS, and thus the optimized segment of code is run fewer times. With
+smaller block-sizes, that portion of the code is run many times and, indeed,
+begins to outpace the unoptimized program. 25 blocksize is now significantly
+closer to 2500 blocksize; before, there was a ~35% difference. However,
+extremely small block sizes such as 10 perform poorly, and even 25 performs
+more poorly than 50.
+
+
+Results from rectangular block sizes:
+-------------------------------------
+
+   dnatest3/4 (size 20000), varying block_x/block_y
+   10000/20000:
+	- 2963 ms
+	- 2962 ms
+	- 2966 ms
+
+   20000/100:
+	- 2374 ms
+	- 2374 ms
+	- 2375 ms
+
+   100/20000:
+	- 2437 ms
+	- 2437 ms
+	- 2443 ms
+
+   100/1000:
+	- 2339 ms
+	- 2345 ms
+	- 2339 ms
+
+   1000/100:
+	- 2191 ms
+	- 2191 ms
+	- 2201 ms
+
+   25/100:
+	- 2272 ms
+	- 2269 ms
+	- 2268 ms
+
+
+   1000/25:
+	- 2135 ms
+	- 2136 ms
+	- 2136 ms
+
+   1000/10:
+	- 2257 ms
+	- 2256 ms
+	- 2256 ms
+
+   10/1000:
+	- 2386 ms
+	- 2386 ms
+	- 2387 ms
+
+   2000/25:
+	- 2121 ms
+	- 2121 ms
+	- 2121 ms
+	
+   dnatest5/6 (size 40000), varying block_x/block_y
+   10000/20000:
+	- 10251 ms
+	- 10224 ms
+	- 10225 ms
+
+   1000/100:
+	- 8758 ms
+	- 8778 ms
+	- 8755 ms
+
+   2000/25:
+	- 8479 ms
+	- 8478 ms
+	- 8479 ms
+	
+   25/2000:
+	- 9475 ms
+	- 9472 ms
+	- 9473 ms
+
+Commentary:
+The program takes in arguments block_x and block_y and creates a submatrix to
+work with that is size block_x by block_y. It allocates the submatrix as an
+int* array of size block_x, containing int arrays of size block_y. Thus, it may
+make sense to set the block_x argument to be small and the block_y argument to
+be large, as the prefetcher may benefit more from having larger int arrays
+rather than having larger int* arrays.
+
+However, the numbers appear to refute this theory, with 100/1000 performing
+more poorly than 1000/100, 10/1000 performing more poorly than 1000/10, and
+100/20000 performing more poorly than 20000/100. It is worth noting, however,
+that 20000/100 vs. 100/20000 is a ~60ms difference, while 1000/10 vs. 10/1000
+is a ~130ms difference, and 1000/100 vs. 100/1000 a ~150ms difference. This
+is presumably due to differing block sizes (more blocks required), implying
+that the difference is indeed at the block-solving level. 
+
+Our number to beat from the above tests is ~2200ms (from 100x100 and 50x50)
+for input size 20000, and ~8900ms (also from 100x100/50x50) for input size
+40000. These numbers are beaten by about 4% (2121ms vs. ~2200ms and
+~8480ms  vs. ~8900ms) using a block configuration of 2000/25.
+
+Our conclusion is that blocks with more rows than columns work best, with
+2000x25 showing promise. Goals for a later time are to run more tests
+(perhaps automate and plot results looking for a pattern) and to examine the
+code and attempt to discover why is behaving in this fashion for varying 
+values (specifically, why does many rows, few columns beat the reverse in
+performance).
